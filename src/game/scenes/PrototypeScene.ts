@@ -19,24 +19,56 @@ type PointOfInterest = {
   radius: number;
   label: string;
   locationName: string;
+  texture: 'sample-cluster' | 'settlement-guide' | 'ruin-gate';
+  scale: number;
 };
+
+type TileKey = 'crash-ground' | 'flats-ground' | 'settlement-ground' | 'ruin-ground';
 
 const TILE_SIZE = 32;
 const MAP_WIDTH = 25;
 const MAP_HEIGHT = 18;
 const MOVEMENT_SPEED = 180;
 const INTERACT_DISTANCE = 38;
+const UI_FOOTER_HEIGHT = 150;
 
 const POINTS_OF_INTEREST: PointOfInterest[] = [
-  { id: 'resource', x: 240, y: 224, radius: 18, label: 'sample cluster', locationName: 'Whispering Flats' },
-  { id: 'npc', x: 496, y: 208, radius: 18, label: 'settlement guide', locationName: 'Mixed Settlement' },
-  { id: 'ruin', x: 752, y: 208, radius: 22, label: 'resin ruin', locationName: 'Ruin Threshold' },
+  {
+    id: 'resource',
+    x: 240,
+    y: 224,
+    radius: 18,
+    label: 'sample cluster',
+    locationName: 'Whispering Flats',
+    texture: 'sample-cluster',
+    scale: 1.2,
+  },
+  {
+    id: 'npc',
+    x: 496,
+    y: 208,
+    radius: 18,
+    label: 'settlement guide',
+    locationName: 'Mixed Settlement',
+    texture: 'settlement-guide',
+    scale: 1.2,
+  },
+  {
+    id: 'ruin',
+    x: 752,
+    y: 208,
+    radius: 22,
+    label: 'resin ruin',
+    locationName: 'Ruin Threshold',
+    texture: 'ruin-gate',
+    scale: 1.5,
+  },
 ];
 
 export class PrototypeScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'W' | 'A' | 'S' | 'D' | 'E' | 'SPACE' | 'K' | 'L', Phaser.Input.Keyboard.Key>;
-  private player!: Phaser.GameObjects.Rectangle;
+  private player!: Phaser.GameObjects.Image;
   private state: GameState = createInitialState();
   private hudText!: Phaser.GameObjects.Text;
   private dialogueText!: Phaser.GameObjects.Text;
@@ -48,13 +80,14 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.buildPlaceholderTextures();
     const restored = loadState();
     if (restored) {
       this.state = restored;
     }
 
     this.drawWorld();
-    this.player = this.add.rectangle(96, 320, 20, 20, 0x88f7ff).setStrokeStyle(2, 0xffffff);
+    this.player = this.add.image(96, 320, 'player-party').setScale(1.5).setDepth(4);
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys('W,A,S,D,E,SPACE,K,L') as typeof this.wasd;
 
@@ -63,14 +96,14 @@ export class PrototypeScene extends Phaser.Scene {
       fontSize: '16px',
       color: '#d6f7ff',
       wordWrap: { width: 300 },
-    });
+    }).setDepth(10);
 
     this.dialogueText = this.add.text(16, GAME_HEIGHT - 132, '', {
       fontFamily: 'monospace',
       fontSize: '15px',
       color: '#d4f7df',
       wordWrap: { width: GAME_WIDTH - 32 },
-    });
+    }).setDepth(10);
 
     this.promptText = this.add.text(GAME_WIDTH - 292, 16, '', {
       fontFamily: 'monospace',
@@ -78,7 +111,7 @@ export class PrototypeScene extends Phaser.Scene {
       color: '#ffe39c',
       wordWrap: { width: 276 },
       align: 'right',
-    }).setOrigin(0, 0);
+    }).setOrigin(0, 0).setDepth(10);
 
     this.combatText = this.add.text(GAME_WIDTH - 292, 168, '', {
       fontFamily: 'monospace',
@@ -86,7 +119,7 @@ export class PrototypeScene extends Phaser.Scene {
       color: '#ffb5a8',
       wordWrap: { width: 276 },
       align: 'right',
-    }).setOrigin(0, 0);
+    }).setOrigin(0, 0).setDepth(10);
 
     this.refreshUi();
   }
@@ -104,42 +137,176 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private drawWorld(): void {
-    const graphics = this.add.graphics();
-
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
-        let color = 0x0d2228;
-
-        if (x < 8) {
-          color = 0x20353b;
-        } else if (x < 17) {
-          color = 0x173f36;
-        } else {
-          color = 0x2b1834;
-        }
-
-        graphics.fillStyle(color, 1);
-        graphics.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE - 1, TILE_SIZE - 1);
+        const worldX = x * TILE_SIZE + TILE_SIZE / 2;
+        const worldY = y * TILE_SIZE + TILE_SIZE / 2;
+        this.add.image(worldX, worldY, this.getTileKeyForColumn(x)).setDisplaySize(TILE_SIZE, TILE_SIZE).setDepth(0);
       }
     }
 
-    graphics.fillStyle(0x4b5d66, 1);
-    graphics.fillRect(48, 128, 96, 96);
-    graphics.fillStyle(0x7f6a39, 1);
-    graphics.fillRect(416, 128, 160, 128);
-    graphics.fillStyle(0x482253, 1);
-    graphics.fillRect(688, 96, 128, 192);
+    this.drawZoneAccent(96, 176, 96, 96, 0x152126, 0x44626b);
+    this.drawZoneAccent(496, 192, 160, 128, 0x54421f, 0xd3bf8f);
+    this.drawZoneAccent(752, 192, 128, 192, 0x31163f, 0xb884e6);
 
-    graphics.fillStyle(0x6df7c1, 1);
-    graphics.fillCircle(240, 224, 18);
-    graphics.fillStyle(0xfff1c1, 1);
-    graphics.fillCircle(496, 208, 18);
-    graphics.fillStyle(0xff8cb5, 1);
-    graphics.fillCircle(752, 208, 22);
+    for (const poi of POINTS_OF_INTEREST) {
+      this.add
+        .image(poi.x, poi.y, poi.texture)
+        .setScale(poi.scale)
+        .setDepth(3)
+        .setAlpha(0.98);
+    }
 
-    this.add.text(56, 96, 'Crash Site', { fontFamily: 'monospace', fontSize: '14px', color: '#d6f7ff' });
-    this.add.text(420, 96, 'Mixed Settlement', { fontFamily: 'monospace', fontSize: '14px', color: '#d6f7ff' });
-    this.add.text(704, 64, 'Ruin', { fontFamily: 'monospace', fontSize: '14px', color: '#d6f7ff' });
+    this.add.text(56, 96, 'Crash Site', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#d6f7ff',
+      backgroundColor: '#091318',
+      padding: { x: 4, y: 2 },
+    }).setDepth(5);
+    this.add.text(420, 96, 'Mixed Settlement', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#d6f7ff',
+      backgroundColor: '#091318',
+      padding: { x: 4, y: 2 },
+    }).setDepth(5);
+    this.add.text(704, 64, 'Ruin', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#d6f7ff',
+      backgroundColor: '#091318',
+      padding: { x: 4, y: 2 },
+    }).setDepth(5);
+  }
+
+  private getTileKeyForColumn(x: number): TileKey {
+    if (x < 8) {
+      return 'crash-ground';
+    }
+
+    if (x < 17) {
+      return 'flats-ground';
+    }
+
+    if (x < 21) {
+      return 'settlement-ground';
+    }
+
+    return 'ruin-ground';
+  }
+
+  private drawZoneAccent(centerX: number, centerY: number, width: number, height: number, fillColor: number, strokeColor: number): void {
+    const graphics = this.add.graphics().setDepth(1);
+    graphics.fillStyle(fillColor, 0.55);
+    graphics.lineStyle(2, strokeColor, 0.8);
+    graphics.fillRoundedRect(centerX - width / 2, centerY - height / 2, width, height, 10);
+    graphics.strokeRoundedRect(centerX - width / 2, centerY - height / 2, width, height, 10);
+  }
+
+  private buildPlaceholderTextures(): void {
+    this.paintTexture('crash-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x20353b, 1).fillRect(0, 0, 32, 32);
+      graphics.fillStyle(0x17292e, 1).fillRect(0, 24, 32, 8);
+      graphics.fillStyle(0x46626b, 1).fillRect(3, 4, 6, 6);
+      graphics.fillStyle(0x68858f, 1).fillRect(12, 8, 5, 5);
+      graphics.fillStyle(0x324b53, 1).fillRect(20, 5, 7, 7);
+      graphics.fillStyle(0x8fa7ad, 1).fillRect(6, 18, 5, 5);
+      graphics.fillStyle(0x556c73, 1).fillRect(17, 19, 9, 4);
+      graphics.fillStyle(0x9db4bb, 1).fillRect(27, 14, 3, 3);
+      graphics.fillStyle(0x35505a, 1).fillRect(0, 0, 32, 1);
+      graphics.fillStyle(0x0f1a1e, 1).fillRect(0, 31, 32, 1);
+    });
+
+    this.paintTexture('flats-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x173f36, 1).fillRect(0, 0, 32, 32);
+      graphics.fillStyle(0x0f2f28, 1).fillRect(0, 24, 32, 8);
+      graphics.fillStyle(0x67dca8, 1).fillRect(5, 4, 4, 12);
+      graphics.fillStyle(0x8ef0bd, 1).fillRect(3, 7, 8, 3);
+      graphics.fillStyle(0x2b5d53, 1).fillRect(14, 9, 6, 10);
+      graphics.fillStyle(0x59c98f, 1).fillRect(13, 12, 8, 3);
+      graphics.fillStyle(0x84ffcf, 1).fillRect(23, 5, 4, 11);
+      graphics.fillStyle(0x53b986, 1).fillRect(21, 7, 8, 3);
+      graphics.fillStyle(0x235247, 1).fillRect(10, 20, 6, 4);
+      graphics.fillStyle(0x296157, 1).fillRect(20, 20, 7, 4);
+    });
+
+    this.paintTexture('settlement-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x7f6a39, 1).fillRect(0, 0, 32, 32);
+      graphics.fillStyle(0x5d4b28, 1).fillRect(0, 24, 32, 8);
+      graphics.fillStyle(0xd6c18f, 1).fillRect(2, 6, 10, 10);
+      graphics.fillStyle(0xa98d56, 1).fillRect(4, 8, 6, 6);
+      graphics.fillStyle(0x4f8f96, 1).fillRect(15, 4, 13, 12);
+      graphics.fillStyle(0xbdeff3, 1).fillRect(17, 6, 9, 8);
+      graphics.fillStyle(0x8c7440, 1).fillRect(6, 20, 8, 4);
+      graphics.fillStyle(0x3c2f18, 1).fillRect(19, 19, 7, 5);
+      graphics.fillStyle(0xf5e2af, 1).fillRect(27, 10, 3, 6);
+    });
+
+    this.paintTexture('ruin-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x2b1834, 1).fillRect(0, 0, 32, 32);
+      graphics.fillStyle(0x1a0e20, 1).fillRect(0, 24, 32, 8);
+      graphics.fillStyle(0x6b3d79, 1).fillRect(4, 4, 8, 8);
+      graphics.fillStyle(0x9f6dd2, 1).fillRect(16, 5, 10, 9);
+      graphics.fillStyle(0x402047, 1).fillRect(7, 15, 5, 5);
+      graphics.fillStyle(0x4d2559, 1).fillRect(15, 16, 12, 5);
+      graphics.fillStyle(0xd59cff, 1).fillRect(3, 22, 6, 2);
+      graphics.fillStyle(0xbf87f2, 1).fillRect(12, 22, 5, 2);
+      graphics.fillStyle(0xefb5ff, 1).fillRect(22, 21, 6, 3);
+    });
+
+    this.paintTexture('sample-cluster', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x2f6d56, 1).fillRect(13, 3, 6, 20);
+      graphics.fillStyle(0x63f1b0, 1).fillRect(9, 6, 14, 6);
+      graphics.fillStyle(0x7ff7bf, 1).fillRect(7, 11, 18, 5);
+      graphics.fillStyle(0x36b57c, 1).fillRect(11, 15, 10, 4);
+      graphics.fillStyle(0x19c88b, 1).fillRect(10, 21, 12, 4);
+      graphics.fillStyle(0xd5fff1, 1).fillRect(12, 24, 8, 5);
+      graphics.fillStyle(0x68ffd1, 1).fillRect(14, 25, 4, 3);
+    });
+
+    this.paintTexture('settlement-guide', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0xffe6b4, 1).fillRect(13, 5, 6, 7);
+      graphics.fillStyle(0xf0c87f, 1).fillRect(11, 12, 10, 8);
+      graphics.fillStyle(0x6d5450, 1).fillRect(9, 20, 14, 8);
+      graphics.fillStyle(0x8de5f2, 1).fillRect(8, 16, 4, 9);
+      graphics.fillStyle(0x8de5f2, 1).fillRect(20, 16, 4, 9);
+      graphics.fillStyle(0x403028, 1).fillRect(12, 12, 2, 2);
+      graphics.fillStyle(0x403028, 1).fillRect(18, 12, 2, 2);
+    });
+
+    this.paintTexture('ruin-gate', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x442251, 1).fillRect(8, 4, 16, 24);
+      graphics.fillStyle(0x7b3f96, 1).fillRect(10, 6, 12, 20);
+      graphics.fillStyle(0xffd6ff, 1).fillRect(13, 9, 6, 4);
+      graphics.fillStyle(0xf58ebd, 1).fillRect(12, 16, 8, 7);
+      graphics.fillStyle(0x1e0d25, 1).fillRect(7, 27, 18, 2);
+    });
+
+    this.paintTexture('player-party', 24, 24, (graphics) => {
+      graphics.fillStyle(0xcbf7ff, 1).fillRect(8, 2, 8, 5);
+      graphics.fillStyle(0x57bfd8, 1).fillRect(6, 7, 12, 8);
+      graphics.fillStyle(0x7ce9ff, 1).fillRect(4, 15, 6, 7);
+      graphics.fillStyle(0x7ce9ff, 1).fillRect(14, 15, 6, 7);
+      graphics.fillStyle(0x0a2c35, 1).fillRect(8, 8, 2, 2);
+      graphics.fillStyle(0x0a2c35, 1).fillRect(14, 8, 2, 2);
+    });
+  }
+
+  private paintTexture(
+    key: string,
+    width: number,
+    height: number,
+    painter: (graphics: Phaser.GameObjects.Graphics) => void,
+  ): void {
+    if (this.textures.exists(key)) {
+      return;
+    }
+
+    const graphics = this.make.graphics({ x: 0, y: 0 }, false);
+    painter(graphics);
+    graphics.generateTexture(key, width, height);
+    graphics.destroy();
   }
 
   private updateMovement(speed: number): void {
@@ -158,7 +325,7 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     this.player.x = Phaser.Math.Clamp(this.player.x + dx * speed, 18, GAME_WIDTH - 18);
-    this.player.y = Phaser.Math.Clamp(this.player.y + dy * speed, 18, GAME_HEIGHT - 150);
+    this.player.y = Phaser.Math.Clamp(this.player.y + dy * speed, 18, GAME_HEIGHT - UI_FOOTER_HEIGHT);
   }
 
   private updateLocationFromPosition(): void {

@@ -5,7 +5,7 @@ export const GAME_WIDTH = 960;
 export const GAME_HEIGHT = 640;
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
+  type: Phaser.CANVAS,
   parent: 'app',
   width: GAME_WIDTH,
   height: GAME_HEIGHT,

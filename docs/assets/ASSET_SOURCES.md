@@ -1,11 +1,21 @@
 # Asset Source Inventory
 
 ## Current run policy
-- Runtime art in this run is generated with simple Phaser graphics primitives so the prototype stays runnable without waiting on downloaded art.
-- External asset packs below are candidates for the next art pass and are **not yet imported into the repo**.
-- Before importing any third-party files, verify the specific pack download terms again and preserve attribution files where required.
+- Runtime art now uses **original in-repo retro SVG placeholder tiles/sprites** so the prototype reads more like an actual 16-bit-era RPG instead of pure Phaser primitives.
+- These placeholders were authored in-repo on 2026-06-21 and do not depend on any third-party asset license.
+- They are intentionally temporary stand-ins for later replacement with a more distinctive alien tileset.
 
-## Candidate packs
+## Current in-repo placeholder set
+- `src/assets/tiles/crash-ground.svg` — dark metallic crash-site floor tile
+- `src/assets/tiles/flats-ground.svg` — alien meadow / whispering flats tile
+- `src/assets/tiles/settlement-ground.svg` — mixed-settlement plaza tile
+- `src/assets/tiles/ruin-ground.svg` — ruin-zone bio-tech floor tile
+- `src/assets/sprites/player-party.svg` — party leader placeholder sprite
+- `src/assets/sprites/sample-cluster.svg` — collectible sample marker
+- `src/assets/sprites/settlement-guide.svg` — NPC placeholder sprite
+- `src/assets/sprites/ruin-gate.svg` — ruin interaction marker
+
+## Candidate packs for later replacement
 
 ### Kenney — Tiny Dungeon
 - URL: https://kenney.nl/assets/tiny-dungeon
@@ -29,6 +39,7 @@
 - Caution: attribution required; page appears to aggregate multiple related assets, so verify the exact subset used
 
 ## Import recommendation
-1. Keep the current prototype on generated primitives until the room-to-room flow feels good.
-2. Prefer Kenney Tiny Dungeon first because the page advertises CC0 and is low-friction for rapid iteration.
-3. Use LPC only if we decide humanoid NPC readability matters more than strict alien-world uniqueness in the first playable slice.
+1. Use the in-repo SVG set while tuning exploration/combat/dialogue feel.
+2. Prefer Kenney Tiny Dungeon first if we want a fast third-party replacement pass with minimal licensing friction.
+3. Use LPC only if humanoid readability matters more than keeping the early-world look abstract/alien.
+4. When we import external packs, preserve license/attribution files in-repo immediately.

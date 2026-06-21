@@ -7,4 +7,11 @@ if (!container) {
   throw new Error('Missing #app container');
 }
 
-void new Phaser.Game(gameConfig);
+try {
+  console.info('Booting Uberia');
+  void new Phaser.Game(gameConfig);
+  console.info('Uberia booted');
+} catch (error) {
+  console.error('Uberia boot failed', error);
+  throw error;
+}

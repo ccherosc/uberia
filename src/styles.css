@@ -1,0 +1,32 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Courier New', Courier, monospace;
+  background: #071015;
+  color: #d6f7ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top, #13222d 0%, #071015 55%, #020507 100%);
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+}
+
+canvas {
+  image-rendering: pixelated;
+  border: 2px solid #8ff0ff;
+  box-shadow: 0 0 28px rgba(74, 220, 255, 0.3);
+}

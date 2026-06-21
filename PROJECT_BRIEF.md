@@ -1,7 +1,7 @@
 # Alien Planet RPG Prototype Brief
 
 ## Working title
-Strange Planet RPG (placeholder)
+Uberia
 
 ## Core fantasy
 A top-down retro pixel-art survival RPG for Windows, mechanically inspired by Ultima 4/5 but set on a hostile alien world inspired by the emotional/biological strangeness of *Scavenger's Reign*.

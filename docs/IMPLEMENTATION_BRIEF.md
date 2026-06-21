@@ -1,12 +1,12 @@
-# Strange Planet RPG — Run Brief (2026-06-21)
+# Uberia — Run Brief (2026-06-21)
 
 ## Source of truth
-- Primary brief: `/root/projects/alien-ultima-prototype/PROJECT_BRIEF.md`
+- Primary brief: `/root/projects/uberia/PROJECT_BRIEF.md`
 - This run's deliverable: scaffold a runnable Phaser 3 + TypeScript + Vite browser prototype with one bounded gameplay slice.
 
 ## Reference inventory
-- `/root/projects/alien-ultima-prototype/PROJECT_BRIEF.md` — mechanic and architecture source of truth
-- `/root/projects/alien-ultima-prototype/docs/assets/ASSET_SOURCES.md` — candidate third-party packs and observed license notes
+- `/root/projects/uberia/PROJECT_BRIEF.md` — mechanic and architecture source of truth
+- `/root/projects/uberia/docs/assets/ASSET_SOURCES.md` — candidate third-party packs and observed license notes
 
 ## Asset constraints
 - No third-party sprite/tile files are present in the repo yet.

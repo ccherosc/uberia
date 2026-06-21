@@ -2,7 +2,7 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Create the first runnable browser prototype of Strange Planet RPG with top-down movement and a tiny gated exploration loop.
+**Goal:** Create the first runnable browser prototype of Uberia with top-down movement and a tiny gated exploration loop.
 
 **Architecture:** Use Vite + TypeScript for a lightweight browser app and Phaser 3 for rendering/input. Keep game state in a small pure TypeScript module so key progression logic is testable outside the renderer.
 

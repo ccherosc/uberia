@@ -1,4 +1,4 @@
-# Strange Planet RPG Prototype
+# Uberia Prototype
 
 A tiny browser-playable RPG prototype for Windows-first testing. It aims for an Ultima 4/5-style top-down feel, reimagined as a lonely alien survival world.
 

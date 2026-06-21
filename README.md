@@ -1,5 +1,7 @@
 # Uberia Prototype
 
+Live build: https://ccherosc.github.io/uberia/
+
 A tiny browser-playable RPG prototype for Windows-first testing. It aims for an Ultima 4/5-style top-down feel, reimagined as a lonely alien survival world.
 
 ## Current playable slice
@@ -31,6 +33,11 @@ Then open the local Vite URL in your browser.
 npm run test
 npm run build
 ```
+
+## GitHub Pages deploy
+Pushes to `main` automatically deploy to:
+
+`https://ccherosc.github.io/uberia/`
 
 ## Controls
 - Move: `WASD` or arrow keys

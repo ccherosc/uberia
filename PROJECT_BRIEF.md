@@ -70,6 +70,7 @@ Confirmed with John:
 - Prefer architecture that stays simple and expandable.
 - Leave the game in a runnable state after each run when possible.
 - Use placeholder content where needed, but document all assumptions.
+- Conservative default for early survival pressure: emphasize oxygen first until broader health/material systems are introduced.
 - End each run with: what changed, how John can test, open questions, blockers, and next recommended step.
 
 ## Known open questions for John
@@ -80,7 +81,10 @@ Resolved on 2026-06-21:
 4. The first artifact should grant limited communication.
 5. Initial virtue-style progression should emphasize exploration and survival.
 
+Resolved on 2026-06-22:
+6. Early survival pressure should emphasize oxygen first for the prototype.
+
 Remaining future questions:
 1. What should the small party composition be in the prototype?
 2. Should the first alien dialogue feel symbolic, biological, or partially translated?
-3. Should survival pressure focus more on health, oxygen, or scarce materials first?
+3. When oxygen pressure is stable, should the next survival layer be hunger/material scarcity or suit damage?

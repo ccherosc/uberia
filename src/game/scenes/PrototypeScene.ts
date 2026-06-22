@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  applyOxygenTick,
   attackTurn,
   collectSample,
   createInitialState,
@@ -31,6 +32,7 @@ const MAP_HEIGHT = 18;
 const MOVEMENT_SPEED = 180;
 const INTERACT_DISTANCE = 38;
 const UI_FOOTER_HEIGHT = 150;
+const OXYGEN_TICK_MS = 1000;
 
 const POINTS_OF_INTEREST: PointOfInterest[] = [
   {
@@ -74,6 +76,7 @@ export class PrototypeScene extends Phaser.Scene {
   private dialogueText!: Phaser.GameObjects.Text;
   private promptText!: Phaser.GameObjects.Text;
   private combatText!: Phaser.GameObjects.Text;
+  private oxygenTickElapsed = 0;
 
   constructor() {
     super('PrototypeScene');
@@ -132,6 +135,7 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     this.updateLocationFromPosition();
+    this.applyOxygenPressure(delta);
     this.handleActions();
     this.refreshUi();
   }
@@ -332,7 +336,7 @@ export class PrototypeScene extends Phaser.Scene {
     let location = 'Crash Site';
 
     if (this.player.x >= 640) {
-      location = 'Ruin Approach';
+      location = this.state.questFlags.ruinEntered ? 'Ruin Threshold' : 'Ruin Approach';
     } else if (this.player.x >= 352) {
       location = 'Mixed Settlement';
     } else if (this.player.x >= 160) {
@@ -340,6 +344,19 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     this.state = setLocation(this.state, location);
+  }
+
+  private applyOxygenPressure(delta: number): void {
+    this.oxygenTickElapsed += delta;
+
+    while (this.oxygenTickElapsed >= OXYGEN_TICK_MS) {
+      this.oxygenTickElapsed -= OXYGEN_TICK_MS;
+      this.state = applyOxygenTick(this.state, this.isSafeOxygenZone());
+    }
+  }
+
+  private isSafeOxygenZone(): boolean {
+    return this.state.locationName === 'Crash Site' || this.state.locationName === 'Mixed Settlement';
   }
 
   private handleActions(): void {
@@ -416,6 +433,7 @@ export class PrototypeScene extends Phaser.Scene {
       'STRANGE PLANET RPG // prototype',
       `Location: ${this.state.locationName}`,
       `HP: ${this.state.health}/${this.state.maxHealth}`,
+      `O2: ${this.state.oxygen}/${this.state.maxOxygen}`,
       `Scrap: ${this.state.scrap}`,
       `Inventory: sample ${sampleCount}, fiber ${fiberCount}, medgel ${this.state.inventory.medgel ?? 0}`,
       `Equipped: ${this.state.equipment.tool}`,
@@ -428,8 +446,17 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.promptText.setText(
       nearby
-        ? [`Nearby: ${nearby.label}`, 'Press E or SPACE to interact', 'Press K to save, L to load'].join('\n')
-        : 'Move with WASD or arrows\nPress K to save, L to load',
+        ? [
+            `Nearby: ${nearby.label}`,
+            'Press E or SPACE to interact',
+            this.isSafeOxygenZone() ? 'Safe air pocket: suit seals recover O2' : 'Hostile air: oxygen drains outside shelter',
+            'Press K to save, L to load',
+          ].join('\n')
+        : [
+            'Move with WASD or arrows',
+            this.isSafeOxygenZone() ? 'Safe air pocket: suit seals recover O2' : 'Hostile air: oxygen drains outside shelter',
+            'Press K to save, L to load',
+          ].join('\n'),
     );
 
     this.combatText.setText(

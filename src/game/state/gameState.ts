@@ -29,6 +29,8 @@ export interface SaveData {
   party: string[];
   health: number;
   maxHealth: number;
+  oxygen: number;
+  maxOxygen: number;
   exploration: number;
   survival: number;
 }
@@ -64,6 +66,8 @@ export function createInitialState(): GameState {
     party: ['Aryn', 'Vera', 'Kesh'],
     health: 12,
     maxHealth: 12,
+    oxygen: 10,
+    maxOxygen: 10,
     exploration: 0,
     survival: 0,
     locationName: 'Crash Site',
@@ -202,6 +206,41 @@ export function attackTurn(state: GameState): GameState {
   };
 }
 
+export function applyOxygenTick(state: GameState, inSafeZone: boolean): GameState {
+  if (inSafeZone) {
+    if (state.oxygen >= state.maxOxygen) {
+      return state;
+    }
+
+    const nextOxygen = Math.min(state.maxOxygen, state.oxygen + 1);
+
+    return {
+      ...state,
+      oxygen: nextOxygen,
+      currentDialogue:
+        nextOxygen === state.maxOxygen
+          ? 'Suit seals stabilize in the shelter of nearby structures.'
+          : 'Your suit catches a cleaner pocket of air and rebuilds oxygen reserves.',
+    };
+  }
+
+  if (state.oxygen > 0) {
+    return {
+      ...state,
+      oxygen: Math.max(0, state.oxygen - 1),
+      currentDialogue:
+        'The air turns sharp and unhelpful. Your suit burns through oxygen to keep the party moving.',
+    };
+  }
+
+  return {
+    ...state,
+    health: Math.max(1, state.health - 1),
+    currentDialogue:
+      'Oxygen reserves are empty. Your vision narrows as the suit strains to keep you alive.',
+  };
+}
+
 export function setLocation(state: GameState, locationName: string): GameState {
   if (state.locationName === locationName) {
     return state;
@@ -224,6 +263,8 @@ export function exportSaveData(state: GameState): SaveData {
     party: state.party,
     health: state.health,
     maxHealth: state.maxHealth,
+    oxygen: state.oxygen,
+    maxOxygen: state.maxOxygen,
     exploration: state.exploration,
     survival: state.survival,
   };

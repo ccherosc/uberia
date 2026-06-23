@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { PrototypeScene } from './scenes/PrototypeScene';
+import { GAME_HEIGHT, GAME_WIDTH } from './dimensions';
 
-export const GAME_WIDTH = 960;
-export const GAME_HEIGHT = 640;
+export { GAME_HEIGHT, GAME_WIDTH };
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.CANVAS,

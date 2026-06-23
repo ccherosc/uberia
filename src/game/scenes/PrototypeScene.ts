@@ -2,54 +2,95 @@ import Phaser from 'phaser';
 import {
   applyOxygenTick,
   attackTurn,
+  collectFiber,
   collectSample,
   createInitialState,
   enterRuin,
   loadState,
+  returnToSettlement,
   saveState,
+  scanArchive,
   setLocation,
+  stabilizeBeacon,
   type GameState,
   talkToSettlementGuide,
 } from '../state/gameState';
-import { GAME_HEIGHT, GAME_WIDTH } from '../config';
+import { GAME_HEIGHT, GAME_WIDTH } from '../dimensions';
+
+type PointOfInterestId = 'sample' | 'fiber' | 'beacon' | 'guide' | 'ruin' | 'archive';
 
 type PointOfInterest = {
-  id: 'resource' | 'npc' | 'ruin';
-  x: number;
-  y: number;
-  radius: number;
+  id: PointOfInterestId;
+  tileX: number;
+  tileY: number;
   label: string;
   locationName: string;
-  texture: 'sample-cluster' | 'settlement-guide' | 'ruin-gate';
-  scale: number;
+  texture: string;
+  scale?: number;
 };
 
-type TileKey = 'crash-ground' | 'flats-ground' | 'settlement-ground' | 'ruin-ground';
+type TileKey = 'crash-ground' | 'flats-ground' | 'beacon-ground' | 'settlement-ground' | 'ruin-ground';
+
+type TileCoord = { x: number; y: number };
 
 const TILE_SIZE = 32;
-const MAP_WIDTH = 25;
-const MAP_HEIGHT = 18;
-const MOVEMENT_SPEED = 180;
-const INTERACT_DISTANCE = 38;
-const UI_FOOTER_HEIGHT = 150;
+const MAP_COLUMNS = 22;
+const MAP_ROWS = 14;
+const MAP_WIDTH = MAP_COLUMNS * TILE_SIZE;
+const MAP_HEIGHT = MAP_ROWS * TILE_SIZE;
+const SIDEBAR_X = MAP_WIDTH + 16;
+const SIDEBAR_WIDTH = GAME_WIDTH - MAP_WIDTH - 32;
+const FOOTER_Y = MAP_HEIGHT + 12;
+const FOOTER_HEIGHT = GAME_HEIGHT - FOOTER_Y - 12;
+const STEP_SPEED = 180;
+const INTERACT_DISTANCE = 1.25;
 const OXYGEN_TICK_MS = 1000;
+const START_TILE: TileCoord = { x: 2, y: 10 };
+
+const OBJECTIVE_TEXT: Record<GameState['objective'], string> = {
+  'collect-sample': 'Harvest a humming sample cluster in the flats.',
+  'collect-fiber': 'Cut sky-fiber from the reed bed for field repairs.',
+  'stabilize-beacon': 'Use the sample and fiber at the dead field beacon.',
+  'talk-to-settlement': 'Reach the mixed settlement and speak to the guide.',
+  'enter-ruin': 'Carry the pulse-glyph east to open the ruin gate.',
+  'defeat-sentinel': 'Defeat the resin sentinel blocking the archive path.',
+  'scan-archive': 'Touch the archive heart and copy its living memory.',
+  'return-to-settlement': 'Return the archive shard to the settlement guide.',
+  survive: 'Range farther, save often, and keep exploring Uberia.',
+};
 
 const POINTS_OF_INTEREST: PointOfInterest[] = [
   {
-    id: 'resource',
-    x: 240,
-    y: 224,
-    radius: 18,
+    id: 'sample',
+    tileX: 5,
+    tileY: 6,
     label: 'sample cluster',
     locationName: 'Whispering Flats',
     texture: 'sample-cluster',
     scale: 1.2,
   },
   {
-    id: 'npc',
-    x: 496,
-    y: 208,
-    radius: 18,
+    id: 'fiber',
+    tileX: 8,
+    tileY: 10,
+    label: 'sky-fiber reed bed',
+    locationName: 'Whispering Flats',
+    texture: 'fiber-reeds',
+    scale: 1.15,
+  },
+  {
+    id: 'beacon',
+    tileX: 10,
+    tileY: 5,
+    label: 'field beacon',
+    locationName: 'Beacon Shelf',
+    texture: 'field-beacon',
+    scale: 1.25,
+  },
+  {
+    id: 'guide',
+    tileX: 14,
+    tileY: 8,
     label: 'settlement guide',
     locationName: 'Mixed Settlement',
     texture: 'settlement-guide',
@@ -57,15 +98,52 @@ const POINTS_OF_INTEREST: PointOfInterest[] = [
   },
   {
     id: 'ruin',
-    x: 752,
-    y: 208,
-    radius: 22,
-    label: 'resin ruin',
+    tileX: 18,
+    tileY: 7,
+    label: 'resin ruin gate',
     locationName: 'Ruin Threshold',
     texture: 'ruin-gate',
     scale: 1.5,
   },
+  {
+    id: 'archive',
+    tileX: 20,
+    tileY: 4,
+    label: 'archive heart',
+    locationName: 'Archive Chamber',
+    texture: 'archive-heart',
+    scale: 1.25,
+  },
 ];
+
+const BLOCKED_TILES = new Set<string>([
+  '0,0',
+  '1,0',
+  '2,0',
+  '3,0',
+  '0,1',
+  '1,1',
+  '0,2',
+  '17,3',
+  '18,3',
+  '19,3',
+  '17,4',
+  '19,4',
+  '17,5',
+  '18,5',
+  '19,5',
+  '12,6',
+  '13,6',
+  '14,6',
+  '15,6',
+  '12,7',
+  '15,7',
+  '12,8',
+  '15,8',
+  '12,9',
+  '13,9',
+  '15,9',
+]);
 
 export class PrototypeScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -76,7 +154,10 @@ export class PrototypeScene extends Phaser.Scene {
   private dialogueText!: Phaser.GameObjects.Text;
   private promptText!: Phaser.GameObjects.Text;
   private combatText!: Phaser.GameObjects.Text;
+  private moveText!: Phaser.GameObjects.Text;
   private oxygenTickElapsed = 0;
+  private moveQueue: TileCoord[] = [];
+  private activeTarget: TileCoord | null = null;
 
   constructor() {
     super('PrototypeScene');
@@ -90,48 +171,66 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     this.drawWorld();
-    this.player = this.add.image(96, 320, 'player-party').setScale(1.5).setDepth(4);
+    this.player = this.add.image(this.tileCenterX(START_TILE.x), this.tileCenterY(START_TILE.y), 'player-party').setScale(1.5).setDepth(5);
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys('W,A,S,D,E,SPACE,K,L') as typeof this.wasd;
 
     this.hudText = this.add.text(16, 16, '', {
       fontFamily: 'monospace',
-      fontSize: '16px',
+      fontSize: '15px',
       color: '#d6f7ff',
+      wordWrap: { width: 320 },
+    }).setDepth(10);
+
+    this.promptText = this.add.text(SIDEBAR_X, 16, '', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#ffe39c',
+      wordWrap: { width: SIDEBAR_WIDTH },
+    }).setDepth(10);
+
+    this.combatText = this.add.text(SIDEBAR_X, 286, '', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#ffb5a8',
+      wordWrap: { width: SIDEBAR_WIDTH },
+    }).setDepth(10);
+
+    this.moveText = this.add.text(620, FOOTER_Y, '', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#a9f7ff',
       wordWrap: { width: 300 },
     }).setDepth(10);
 
-    this.dialogueText = this.add.text(16, GAME_HEIGHT - 132, '', {
+    this.dialogueText = this.add.text(16, FOOTER_Y, '', {
       fontFamily: 'monospace',
       fontSize: '15px',
       color: '#d4f7df',
-      wordWrap: { width: GAME_WIDTH - 32 },
+      wordWrap: { width: 580 },
     }).setDepth(10);
 
-    this.promptText = this.add.text(GAME_WIDTH - 292, 16, '', {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: '#ffe39c',
-      wordWrap: { width: 276 },
-      align: 'right',
-    }).setOrigin(0, 0).setDepth(10);
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.worldX < 0 || pointer.worldY < 0 || pointer.worldX >= MAP_WIDTH || pointer.worldY >= MAP_HEIGHT) {
+        return;
+      }
 
-    this.combatText = this.add.text(GAME_WIDTH - 292, 168, '', {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: '#ffb5a8',
-      wordWrap: { width: 276 },
-      align: 'right',
-    }).setOrigin(0, 0).setDepth(10);
+      const target = this.snapPointerToTile(pointer.worldX, pointer.worldY);
+      this.setMovePathTo(target);
+    });
+
+    if (restored) {
+      const restoredTile = this.findSpawnTileForLocation(restored.locationName);
+      this.player.setPosition(this.tileCenterX(restoredTile.x), this.tileCenterY(restoredTile.y));
+    }
 
     this.refreshUi();
   }
 
   update(_time: number, delta: number): void {
-    const speed = (MOVEMENT_SPEED * delta) / 1000;
-
     if (!this.state.inCombat) {
-      this.updateMovement(speed);
+      this.handleKeyboardStepInput();
+      this.updateQueuedMovement(delta);
     }
 
     this.updateLocationFromPosition();
@@ -141,71 +240,116 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private drawWorld(): void {
-    for (let y = 0; y < MAP_HEIGHT; y += 1) {
-      for (let x = 0; x < MAP_WIDTH; x += 1) {
-        const worldX = x * TILE_SIZE + TILE_SIZE / 2;
-        const worldY = y * TILE_SIZE + TILE_SIZE / 2;
-        this.add.image(worldX, worldY, this.getTileKeyForColumn(x)).setDisplaySize(TILE_SIZE, TILE_SIZE).setDepth(0);
+    this.add.rectangle(MAP_WIDTH / 2, MAP_HEIGHT / 2, MAP_WIDTH, MAP_HEIGHT, 0x081218).setStrokeStyle(2, 0x22404f, 1).setDepth(-2);
+    this.add.rectangle(SIDEBAR_X - 8 + SIDEBAR_WIDTH / 2, GAME_HEIGHT / 2, SIDEBAR_WIDTH + 16, GAME_HEIGHT - 24, 0x071117)
+      .setStrokeStyle(2, 0x2f5563, 1)
+      .setDepth(-2);
+    this.add.rectangle(GAME_WIDTH / 2, FOOTER_Y + FOOTER_HEIGHT / 2, GAME_WIDTH - 24, FOOTER_HEIGHT, 0x071117)
+      .setStrokeStyle(2, 0x2f5563, 1)
+      .setDepth(-2);
+
+    for (let y = 0; y < MAP_ROWS; y += 1) {
+      for (let x = 0; x < MAP_COLUMNS; x += 1) {
+        const worldX = this.tileCenterX(x);
+        const worldY = this.tileCenterY(y);
+        this.add.image(worldX, worldY, this.getTileKey(x, y)).setDisplaySize(TILE_SIZE, TILE_SIZE).setDepth(0);
       }
     }
 
-    this.drawZoneAccent(96, 176, 96, 96, 0x152126, 0x44626b);
-    this.drawZoneAccent(496, 192, 160, 128, 0x54421f, 0xd3bf8f);
-    this.drawZoneAccent(752, 192, 128, 192, 0x31163f, 0xb884e6);
+    this.drawBlockedStructures();
+    this.drawZoneAccent(5, 10, 5, 3, 0x14232a, 0x4f7380);
+    this.drawZoneAccent(10, 5, 3, 3, 0x0c2e31, 0x5fe2ef);
+    this.drawZoneAccent(14, 8, 5, 4, 0x5e4b25, 0xd5c18f);
+    this.drawZoneAccent(19, 5, 4, 5, 0x2a1436, 0xd0a3ff);
 
     for (const poi of POINTS_OF_INTEREST) {
       this.add
-        .image(poi.x, poi.y, poi.texture)
-        .setScale(poi.scale)
-        .setDepth(3)
+        .image(this.tileCenterX(poi.tileX), this.tileCenterY(poi.tileY), poi.texture)
+        .setScale(poi.scale ?? 1)
+        .setDepth(4)
         .setAlpha(0.98);
     }
 
-    this.add.text(56, 96, 'Crash Site', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#d6f7ff',
-      backgroundColor: '#091318',
-      padding: { x: 4, y: 2 },
-    }).setDepth(5);
-    this.add.text(420, 96, 'Mixed Settlement', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#d6f7ff',
-      backgroundColor: '#091318',
-      padding: { x: 4, y: 2 },
-    }).setDepth(5);
-    this.add.text(704, 64, 'Ruin', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#d6f7ff',
-      backgroundColor: '#091318',
-      padding: { x: 4, y: 2 },
-    }).setDepth(5);
+    this.addLabel(1, 12, 'Crash Site');
+    this.addLabel(4, 3, 'Whispering Flats');
+    this.addLabel(9, 3, 'Beacon Shelf');
+    this.addLabel(13, 4, 'Mixed Settlement');
+    this.addLabel(17, 1, 'Resin Ruin');
+    this.addLabel(19, 2, 'Archive');
   }
 
-  private getTileKeyForColumn(x: number): TileKey {
-    if (x < 8) {
+  private addLabel(tileX: number, tileY: number, text: string): void {
+    this.add.text(this.tileCenterX(tileX) - 28, this.tileCenterY(tileY) - 22, text, {
+      fontFamily: 'monospace',
+      fontSize: '13px',
+      color: '#d6f7ff',
+      backgroundColor: '#091318',
+      padding: { x: 4, y: 2 },
+    }).setDepth(6);
+  }
+
+  private drawBlockedStructures(): void {
+    const graphics = this.add.graphics().setDepth(2);
+    graphics.fillStyle(0x0d1d23, 0.95);
+
+    // Crash rubble.
+    graphics.fillRect(0, 0, 128, 96);
+    // Settlement walls.
+    graphics.fillRect(this.tileCenterX(12) - 16, this.tileCenterY(6) - 16, 128, 128);
+    graphics.fillRect(this.tileCenterX(13) - 16, this.tileCenterY(7) - 16, 64, 64);
+    // Archive growth columns.
+    graphics.fillRect(this.tileCenterX(17) - 16, this.tileCenterY(3) - 16, 96, 96);
+
+    graphics.lineStyle(2, 0x81c6d6, 0.5);
+    for (let x = 0; x <= MAP_COLUMNS; x += 1) {
+      graphics.moveTo(x * TILE_SIZE, 0);
+      graphics.lineTo(x * TILE_SIZE, MAP_HEIGHT);
+    }
+    for (let y = 0; y <= MAP_ROWS; y += 1) {
+      graphics.moveTo(0, y * TILE_SIZE);
+      graphics.lineTo(MAP_WIDTH, y * TILE_SIZE);
+    }
+    graphics.strokePath();
+  }
+
+  private getTileKey(tileX: number, tileY: number): TileKey {
+    if (tileX <= 3 || tileY >= 11 && tileX <= 5) {
       return 'crash-ground';
     }
 
-    if (x < 17) {
-      return 'flats-ground';
+    if (tileX >= 17) {
+      return 'ruin-ground';
     }
 
-    if (x < 21) {
+    if (tileX >= 12 && tileX <= 15 && tileY >= 5 && tileY <= 10) {
       return 'settlement-ground';
     }
 
-    return 'ruin-ground';
+    if (tileX >= 9 && tileX <= 11 && tileY >= 3 && tileY <= 7) {
+      return 'beacon-ground';
+    }
+
+    return 'flats-ground';
   }
 
-  private drawZoneAccent(centerX: number, centerY: number, width: number, height: number, fillColor: number, strokeColor: number): void {
+  private drawZoneAccent(tileX: number, tileY: number, widthTiles: number, heightTiles: number, fillColor: number, strokeColor: number): void {
     const graphics = this.add.graphics().setDepth(1);
-    graphics.fillStyle(fillColor, 0.55);
+    graphics.fillStyle(fillColor, 0.45);
     graphics.lineStyle(2, strokeColor, 0.8);
-    graphics.fillRoundedRect(centerX - width / 2, centerY - height / 2, width, height, 10);
-    graphics.strokeRoundedRect(centerX - width / 2, centerY - height / 2, width, height, 10);
+    graphics.fillRoundedRect(
+      this.tileCenterX(tileX) - (widthTiles * TILE_SIZE) / 2,
+      this.tileCenterY(tileY) - (heightTiles * TILE_SIZE) / 2,
+      widthTiles * TILE_SIZE,
+      heightTiles * TILE_SIZE,
+      10,
+    );
+    graphics.strokeRoundedRect(
+      this.tileCenterX(tileX) - (widthTiles * TILE_SIZE) / 2,
+      this.tileCenterY(tileY) - (heightTiles * TILE_SIZE) / 2,
+      widthTiles * TILE_SIZE,
+      heightTiles * TILE_SIZE,
+      10,
+    );
   }
 
   private buildPlaceholderTextures(): void {
@@ -218,8 +362,6 @@ export class PrototypeScene extends Phaser.Scene {
       graphics.fillStyle(0x8fa7ad, 1).fillRect(6, 18, 5, 5);
       graphics.fillStyle(0x556c73, 1).fillRect(17, 19, 9, 4);
       graphics.fillStyle(0x9db4bb, 1).fillRect(27, 14, 3, 3);
-      graphics.fillStyle(0x35505a, 1).fillRect(0, 0, 32, 1);
-      graphics.fillStyle(0x0f1a1e, 1).fillRect(0, 31, 32, 1);
     });
 
     this.paintTexture('flats-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
@@ -230,9 +372,17 @@ export class PrototypeScene extends Phaser.Scene {
       graphics.fillStyle(0x2b5d53, 1).fillRect(14, 9, 6, 10);
       graphics.fillStyle(0x59c98f, 1).fillRect(13, 12, 8, 3);
       graphics.fillStyle(0x84ffcf, 1).fillRect(23, 5, 4, 11);
-      graphics.fillStyle(0x53b986, 1).fillRect(21, 7, 8, 3);
       graphics.fillStyle(0x235247, 1).fillRect(10, 20, 6, 4);
       graphics.fillStyle(0x296157, 1).fillRect(20, 20, 7, 4);
+    });
+
+    this.paintTexture('beacon-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x123b40, 1).fillRect(0, 0, 32, 32);
+      graphics.fillStyle(0x0b2428, 1).fillRect(0, 24, 32, 8);
+      graphics.fillStyle(0x56dce8, 1).fillRect(5, 5, 5, 14);
+      graphics.fillStyle(0x9cf9ff, 1).fillRect(12, 3, 8, 18);
+      graphics.fillStyle(0x1b6870, 1).fillRect(22, 7, 5, 12);
+      graphics.fillStyle(0x6cecf5, 1).fillRect(4, 22, 24, 3);
     });
 
     this.paintTexture('settlement-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
@@ -244,7 +394,6 @@ export class PrototypeScene extends Phaser.Scene {
       graphics.fillStyle(0xbdeff3, 1).fillRect(17, 6, 9, 8);
       graphics.fillStyle(0x8c7440, 1).fillRect(6, 20, 8, 4);
       graphics.fillStyle(0x3c2f18, 1).fillRect(19, 19, 7, 5);
-      graphics.fillStyle(0xf5e2af, 1).fillRect(27, 10, 3, 6);
     });
 
     this.paintTexture('ruin-ground', TILE_SIZE, TILE_SIZE, (graphics) => {
@@ -263,10 +412,22 @@ export class PrototypeScene extends Phaser.Scene {
       graphics.fillStyle(0x2f6d56, 1).fillRect(13, 3, 6, 20);
       graphics.fillStyle(0x63f1b0, 1).fillRect(9, 6, 14, 6);
       graphics.fillStyle(0x7ff7bf, 1).fillRect(7, 11, 18, 5);
-      graphics.fillStyle(0x36b57c, 1).fillRect(11, 15, 10, 4);
-      graphics.fillStyle(0x19c88b, 1).fillRect(10, 21, 12, 4);
       graphics.fillStyle(0xd5fff1, 1).fillRect(12, 24, 8, 5);
-      graphics.fillStyle(0x68ffd1, 1).fillRect(14, 25, 4, 3);
+    });
+
+    this.paintTexture('fiber-reeds', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x6ff2c0, 1).fillRect(6, 7, 2, 18);
+      graphics.fillStyle(0x9dfdd5, 1).fillRect(11, 3, 2, 22);
+      graphics.fillStyle(0x6ff2c0, 1).fillRect(16, 8, 2, 17);
+      graphics.fillStyle(0xcffff1, 1).fillRect(20, 5, 2, 20);
+      graphics.fillStyle(0x2b5d53, 1).fillRect(5, 24, 18, 3);
+    });
+
+    this.paintTexture('field-beacon', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x25464a, 1).fillRect(12, 5, 8, 21);
+      graphics.fillStyle(0x72f3ff, 1).fillRect(9, 7, 14, 6);
+      graphics.fillStyle(0xe4ffff, 1).fillRect(13, 3, 6, 4);
+      graphics.fillStyle(0x7fe7f2, 1).fillRect(8, 18, 16, 5);
     });
 
     this.paintTexture('settlement-guide', TILE_SIZE, TILE_SIZE, (graphics) => {
@@ -275,8 +436,6 @@ export class PrototypeScene extends Phaser.Scene {
       graphics.fillStyle(0x6d5450, 1).fillRect(9, 20, 14, 8);
       graphics.fillStyle(0x8de5f2, 1).fillRect(8, 16, 4, 9);
       graphics.fillStyle(0x8de5f2, 1).fillRect(20, 16, 4, 9);
-      graphics.fillStyle(0x403028, 1).fillRect(12, 12, 2, 2);
-      graphics.fillStyle(0x403028, 1).fillRect(18, 12, 2, 2);
     });
 
     this.paintTexture('ruin-gate', TILE_SIZE, TILE_SIZE, (graphics) => {
@@ -284,7 +443,14 @@ export class PrototypeScene extends Phaser.Scene {
       graphics.fillStyle(0x7b3f96, 1).fillRect(10, 6, 12, 20);
       graphics.fillStyle(0xffd6ff, 1).fillRect(13, 9, 6, 4);
       graphics.fillStyle(0xf58ebd, 1).fillRect(12, 16, 8, 7);
-      graphics.fillStyle(0x1e0d25, 1).fillRect(7, 27, 18, 2);
+    });
+
+    this.paintTexture('archive-heart', TILE_SIZE, TILE_SIZE, (graphics) => {
+      graphics.fillStyle(0x3e1c50, 1).fillRect(9, 4, 14, 22);
+      graphics.fillStyle(0xc08cff, 1).fillRect(11, 7, 10, 16);
+      graphics.fillStyle(0xf0d5ff, 1).fillRect(13, 10, 6, 10);
+      graphics.fillStyle(0x79f4ff, 1).fillRect(7, 13, 4, 4);
+      graphics.fillStyle(0x79f4ff, 1).fillRect(21, 13, 4, 4);
     });
 
     this.paintTexture('player-party', 24, 24, (graphics) => {
@@ -313,33 +479,99 @@ export class PrototypeScene extends Phaser.Scene {
     graphics.destroy();
   }
 
-  private updateMovement(speed: number): void {
-    let dx = 0;
-    let dy = 0;
-
-    if (this.cursors.left.isDown || this.wasd.A.isDown) dx -= 1;
-    if (this.cursors.right.isDown || this.wasd.D.isDown) dx += 1;
-    if (this.cursors.up.isDown || this.wasd.W.isDown) dy -= 1;
-    if (this.cursors.down.isDown || this.wasd.S.isDown) dy += 1;
-
-    if (dx !== 0 && dy !== 0) {
-      const inv = 1 / Math.sqrt(2);
-      dx *= inv;
-      dy *= inv;
+  private handleKeyboardStepInput(): void {
+    if (this.activeTarget || this.moveQueue.length > 0) {
+      return;
     }
 
-    this.player.x = Phaser.Math.Clamp(this.player.x + dx * speed, 18, GAME_WIDTH - 18);
-    this.player.y = Phaser.Math.Clamp(this.player.y + dy * speed, 18, GAME_HEIGHT - UI_FOOTER_HEIGHT);
+    const current = this.getCurrentTile();
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.left) || Phaser.Input.Keyboard.JustDown(this.wasd.A)) {
+      this.setMovePathTo({ x: current.x - 1, y: current.y });
+    } else if (Phaser.Input.Keyboard.JustDown(this.cursors.right) || Phaser.Input.Keyboard.JustDown(this.wasd.D)) {
+      this.setMovePathTo({ x: current.x + 1, y: current.y });
+    } else if (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.wasd.W)) {
+      this.setMovePathTo({ x: current.x, y: current.y - 1 });
+    } else if (Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.wasd.S)) {
+      this.setMovePathTo({ x: current.x, y: current.y + 1 });
+    }
+  }
+
+  private setMovePathTo(target: TileCoord): void {
+    if (!this.isWalkable(target.x, target.y)) {
+      this.state = {
+        ...this.state,
+        currentDialogue: 'That tile is blocked by wreckage, settlement walls, or living ruin growth.',
+      };
+      return;
+    }
+
+    const current = this.getCurrentTile();
+    const path = this.buildPath(current, target);
+    if (path.length === 0) {
+      return;
+    }
+
+    this.moveQueue = path;
+    this.activeTarget = this.moveQueue.shift() ?? null;
+  }
+
+  private buildPath(start: TileCoord, end: TileCoord): TileCoord[] {
+    const path: TileCoord[] = [];
+    let cursor = { ...start };
+
+    while (cursor.x !== end.x) {
+      cursor = { ...cursor, x: cursor.x + Math.sign(end.x - cursor.x) };
+      if (!this.isWalkable(cursor.x, cursor.y)) {
+        return [];
+      }
+      path.push({ ...cursor });
+    }
+
+    while (cursor.y !== end.y) {
+      cursor = { ...cursor, y: cursor.y + Math.sign(end.y - cursor.y) };
+      if (!this.isWalkable(cursor.x, cursor.y)) {
+        return [];
+      }
+      path.push({ ...cursor });
+    }
+
+    return path;
+  }
+
+  private updateQueuedMovement(delta: number): void {
+    if (!this.activeTarget) {
+      return;
+    }
+
+    const targetX = this.tileCenterX(this.activeTarget.x);
+    const targetY = this.tileCenterY(this.activeTarget.y);
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, targetX, targetY);
+    const step = (STEP_SPEED * delta) / 1000;
+
+    if (distance <= step) {
+      this.player.setPosition(targetX, targetY);
+      this.activeTarget = this.moveQueue.shift() ?? null;
+      return;
+    }
+
+    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY);
+    this.player.x += Math.cos(angle) * step;
+    this.player.y += Math.sin(angle) * step;
   }
 
   private updateLocationFromPosition(): void {
+    const tile = this.getCurrentTile();
     let location = 'Crash Site';
 
-    if (this.player.x >= 640) {
+    if (tile.x >= 19 && tile.y <= 6) {
+      location = 'Archive Chamber';
+    } else if (tile.x >= 17) {
       location = this.state.questFlags.ruinEntered ? 'Ruin Threshold' : 'Ruin Approach';
-    } else if (this.player.x >= 352) {
+    } else if (tile.x >= 12 && tile.x <= 15 && tile.y >= 5 && tile.y <= 10) {
       location = 'Mixed Settlement';
-    } else if (this.player.x >= 160) {
+    } else if (tile.x >= 9 && tile.x <= 11 && tile.y >= 3 && tile.y <= 7) {
+      location = 'Beacon Shelf';
+    } else if (tile.x >= 4) {
       location = 'Whispering Flats';
     }
 
@@ -356,7 +588,9 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private isSafeOxygenZone(): boolean {
-    return this.state.locationName === 'Crash Site' || this.state.locationName === 'Mixed Settlement';
+    const tile = this.getCurrentTile();
+    const inBeaconPocket = this.state.questFlags.beaconStabilized && Phaser.Math.Distance.Between(tile.x, tile.y, 10, 5) <= 1.5;
+    return this.state.locationName === 'Crash Site' || this.state.locationName === 'Mixed Settlement' || inBeaconPocket;
   }
 
   private handleActions(): void {
@@ -372,6 +606,10 @@ export class PrototypeScene extends Phaser.Scene {
       const restored = loadState();
       if (restored) {
         this.state = restored;
+        const restoredTile = this.findSpawnTileForLocation(restored.locationName);
+        this.player.setPosition(this.tileCenterX(restoredTile.x), this.tileCenterY(restoredTile.y));
+        this.moveQueue = [];
+        this.activeTarget = null;
       } else {
         this.state = {
           ...this.state,
@@ -380,9 +618,7 @@ export class PrototypeScene extends Phaser.Scene {
       }
     }
 
-    const interactPressed =
-      Phaser.Input.Keyboard.JustDown(this.wasd.E) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.SPACE);
+    const interactPressed = Phaser.Input.Keyboard.JustDown(this.wasd.E) || Phaser.Input.Keyboard.JustDown(this.wasd.SPACE);
 
     if (!interactPressed) {
       return;
@@ -402,67 +638,148 @@ export class PrototypeScene extends Phaser.Scene {
       return;
     }
 
-    if (poi.id === 'resource') {
-      this.state = collectSample(this.state);
-    }
-
-    if (poi.id === 'npc') {
-      this.state = talkToSettlementGuide(this.state);
-    }
-
-    if (poi.id === 'ruin') {
-      this.state = enterRuin(this.state);
+    switch (poi.id) {
+      case 'sample':
+        this.state = collectSample(this.state);
+        break;
+      case 'fiber':
+        this.state = collectFiber(this.state);
+        break;
+      case 'beacon':
+        this.state = stabilizeBeacon(this.state);
+        break;
+      case 'guide':
+        this.state = this.state.questFlags.archiveScanned ? returnToSettlement(this.state) : talkToSettlementGuide(this.state);
+        break;
+      case 'ruin':
+        this.state = enterRuin(this.state);
+        break;
+      case 'archive':
+        this.state = scanArchive(this.state);
+        break;
     }
   }
 
   private findNearbyPoint(): PointOfInterest | null {
+    const tile = this.getCurrentTile();
     return (
-      POINTS_OF_INTEREST.find((poi) => {
-        const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, poi.x, poi.y);
-        return distance <= INTERACT_DISTANCE + poi.radius;
-      }) ?? null
+      POINTS_OF_INTEREST.find((poi) => Phaser.Math.Distance.Between(tile.x, tile.y, poi.tileX, poi.tileY) <= INTERACT_DISTANCE) ?? null
     );
   }
 
   private refreshUi(): void {
     const nearby = this.findNearbyPoint();
+    const tile = this.getCurrentTile();
     const sampleCount = this.state.inventory.sample ?? 0;
     const fiberCount = this.state.inventory.fiber ?? 0;
+    const archiveShardCount = this.state.inventory.archiveShard ?? 0;
 
     this.hudText.setText([
-      'STRANGE PLANET RPG // prototype',
+      'UBERIA // survival prototype',
       `Location: ${this.state.locationName}`,
+      `Tile: ${tile.x}, ${tile.y}`,
       `HP: ${this.state.health}/${this.state.maxHealth}`,
       `O2: ${this.state.oxygen}/${this.state.maxOxygen}`,
       `Scrap: ${this.state.scrap}`,
-      `Inventory: sample ${sampleCount}, fiber ${fiberCount}, medgel ${this.state.inventory.medgel ?? 0}`,
-      `Equipped: ${this.state.equipment.tool}`,
+      `Inventory: sample ${sampleCount}, fiber ${fiberCount}, medgel ${this.state.inventory.medgel ?? 0}, shard ${archiveShardCount}`,
+      `Suit: ${this.state.equipment.suit}`,
+      `Tool: ${this.state.equipment.tool}`,
       `Party: ${this.state.party.join(', ')}`,
-      `Objective: ${this.state.objective}`,
+      `Signals: ${this.state.discoveredSignals.length > 0 ? this.state.discoveredSignals.join(', ') : 'none'}`,
       `Progress: exploration ${this.state.exploration} / survival ${this.state.survival}`,
     ]);
 
-    this.dialogueText.setText(`Log: ${this.state.currentDialogue}`);
-
-    this.promptText.setText(
-      nearby
-        ? [
-            `Nearby: ${nearby.label}`,
-            'Press E or SPACE to interact',
-            this.isSafeOxygenZone() ? 'Safe air pocket: suit seals recover O2' : 'Hostile air: oxygen drains outside shelter',
-            'Press K to save, L to load',
-          ].join('\n')
-        : [
-            'Move with WASD or arrows',
-            this.isSafeOxygenZone() ? 'Safe air pocket: suit seals recover O2' : 'Hostile air: oxygen drains outside shelter',
-            'Press K to save, L to load',
-          ].join('\n'),
-    );
+    this.promptText.setText([
+      'Mission',
+      OBJECTIVE_TEXT[this.state.objective],
+      '',
+      nearby ? `Nearby: ${nearby.label}` : 'Nearby: nothing interactable',
+      nearby ? 'E / SPACE = interact' : 'Click a tile or tap a key to move one grid step',
+      this.isSafeOxygenZone() ? 'Air pocket: oxygen refills here' : 'Hostile air: oxygen drains here',
+      'K = save, L = load',
+    ]);
 
     this.combatText.setText(
       this.state.inCombat && this.state.combat
-        ? [`Combat: ${this.state.combat.enemyName}`, `Enemy HP: ${this.state.combat.enemyHp}`, 'Press E or SPACE to attack'].join('\n')
-        : 'Quest loop:\n1. collect sample\n2. talk to settlement\n3. enter ruin\n4. defeat sentinel',
+        ? [
+            `Combat: ${this.state.combat.enemyName}`,
+            `Enemy HP: ${this.state.combat.enemyHp}`,
+            'Press E or SPACE to strike',
+            'The fight is turn-based: one hit for you, one for it.',
+          ].join('\n')
+        : [
+            'Quest route',
+            '1. harvest sample',
+            '2. gather fiber',
+            '3. stabilize beacon',
+            '4. speak to guide',
+            '5. open ruin',
+            '6. defeat sentinel',
+            '7. scan archive',
+            '8. return to settlement',
+          ].join('\n'),
     );
+
+    this.moveText.setText([
+      'What you can do now',
+      '- click tiles to move one square at a time',
+      '- WASD / arrows = single-tile nudges',
+      '- gather sample + fiber',
+      '- repair the beacon for safe air',
+      '- talk to the settlement guide',
+      '- fight the ruin sentinel',
+      '- save/load your run',
+    ].join('\n'));
+
+    this.dialogueText.setText(`Log: ${this.state.currentDialogue}`);
+  }
+
+  private getCurrentTile(): TileCoord {
+    return {
+      x: Phaser.Math.Clamp(Math.round((this.player.x - TILE_SIZE / 2) / TILE_SIZE), 0, MAP_COLUMNS - 1),
+      y: Phaser.Math.Clamp(Math.round((this.player.y - TILE_SIZE / 2) / TILE_SIZE), 0, MAP_ROWS - 1),
+    };
+  }
+
+  private snapPointerToTile(worldX: number, worldY: number): TileCoord {
+    return {
+      x: Phaser.Math.Clamp(Math.floor(worldX / TILE_SIZE), 0, MAP_COLUMNS - 1),
+      y: Phaser.Math.Clamp(Math.floor(worldY / TILE_SIZE), 0, MAP_ROWS - 1),
+    };
+  }
+
+  private isWalkable(tileX: number, tileY: number): boolean {
+    if (tileX < 0 || tileY < 0 || tileX >= MAP_COLUMNS || tileY >= MAP_ROWS) {
+      return false;
+    }
+
+    return !BLOCKED_TILES.has(`${tileX},${tileY}`);
+  }
+
+  private tileCenterX(tileX: number): number {
+    return tileX * TILE_SIZE + TILE_SIZE / 2;
+  }
+
+  private tileCenterY(tileY: number): number {
+    return tileY * TILE_SIZE + TILE_SIZE / 2;
+  }
+
+  private findSpawnTileForLocation(locationName: string): TileCoord {
+    if (locationName === 'Archive Chamber') {
+      return { x: 20, y: 4 };
+    }
+    if (locationName === 'Ruin Threshold' || locationName === 'Ruin Approach') {
+      return { x: 18, y: 7 };
+    }
+    if (locationName === 'Mixed Settlement') {
+      return { x: 14, y: 8 };
+    }
+    if (locationName === 'Beacon Shelf') {
+      return { x: 10, y: 5 };
+    }
+    if (locationName === 'Whispering Flats') {
+      return { x: 6, y: 8 };
+    }
+    return START_TILE;
   }
 }

@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   applyOxygenTick,
   attackTurn,
+  collectFiber,
   collectSample,
   createInitialState,
   enterRuin,
   exportSaveData,
   hydrateState,
+  returnToSettlement,
+  scanArchive,
+  stabilizeBeacon,
   talkToSettlementGuide,
 } from './gameState';
 
@@ -23,46 +27,89 @@ describe('game state progression', () => {
 
     const next = collectSample(state);
 
-    expect(next.scrap).toBe(2);
+    expect(next.scrap).toBe(3);
     expect(next.inventory.sample).toBe(1);
     expect(next.questFlags.resourceCollected).toBe(true);
-    expect(next.objective).toBe('talk-to-settlement');
+    expect(next.objective).toBe('collect-fiber');
   });
 
-  it('talking to the settlement guide is gated on the sample', () => {
-    const state = createInitialState();
+  it('collecting fiber advances the objective toward the beacon', () => {
+    const state = collectSample(createInitialState());
+    const next = collectFiber(state);
+
+    expect(next.inventory.fiber).toBe(3);
+    expect(next.questFlags.fiberCollected).toBe(true);
+    expect(next.objective).toBe('stabilize-beacon');
+  });
+
+  it('the beacon is gated on both field resources and expands oxygen', () => {
+    const blocked = stabilizeBeacon(createInitialState());
+    expect(blocked.questFlags.beaconStabilized).toBe(false);
+
+    const ready = stabilizeBeacon(collectFiber(collectSample(createInitialState())));
+    expect(ready.questFlags.beaconStabilized).toBe(true);
+    expect(ready.maxOxygen).toBe(12);
+    expect(ready.objective).toBe('talk-to-settlement');
+  });
+
+  it('talking to the settlement guide is gated on the beacon', () => {
+    const state = collectFiber(collectSample(createInitialState()));
 
     const blocked = talkToSettlementGuide(state);
     expect(blocked.questFlags.npcSpokenTo).toBe(false);
 
-    const progressed = talkToSettlementGuide(collectSample(state));
+    const progressed = talkToSettlementGuide(stabilizeBeacon(state));
     expect(progressed.questFlags.npcSpokenTo).toBe(true);
     expect(progressed.objective).toBe('enter-ruin');
     expect(progressed.discoveredSignals).toContain('pulse-glyph');
   });
 
   it('entering the ruin starts combat only after the guide is spoken to', () => {
-    const state = createInitialState();
+    const state = stabilizeBeacon(collectFiber(collectSample(createInitialState())));
 
     const blocked = enterRuin(state);
     expect(blocked.inCombat).toBe(false);
 
-    const progressed = enterRuin(talkToSettlementGuide(collectSample(state)));
+    const progressed = enterRuin(talkToSettlementGuide(state));
     expect(progressed.inCombat).toBe(true);
     expect(progressed.combat?.enemyName).toBe('Resin Sentinel');
     expect(progressed.objective).toBe('defeat-sentinel');
   });
 
-  it('combat resolves after repeated attacks', () => {
-    let state = enterRuin(talkToSettlementGuide(collectSample(createInitialState())));
+  it('combat resolves into archive scanning after repeated attacks', () => {
+    let state = enterRuin(talkToSettlementGuide(stabilizeBeacon(collectFiber(collectSample(createInitialState())))));
 
+    state = attackTurn(state);
     state = attackTurn(state);
     state = attackTurn(state);
     state = attackTurn(state);
 
     expect(state.inCombat).toBe(false);
     expect(state.questFlags.sentinelDefeated).toBe(true);
-    expect(state.objective).toBe('survive');
+    expect(state.objective).toBe('scan-archive');
+  });
+
+  it('archive scanning unlocks a return objective', () => {
+    let state = enterRuin(talkToSettlementGuide(stabilizeBeacon(collectFiber(collectSample(createInitialState())))));
+    state = attackTurn(attackTurn(attackTurn(attackTurn(state))));
+
+    const scanned = scanArchive(state);
+
+    expect(scanned.questFlags.archiveScanned).toBe(true);
+    expect(scanned.inventory.archiveShard).toBe(1);
+    expect(scanned.objective).toBe('return-to-settlement');
+  });
+
+  it('returning to the settlement upgrades the suit after scanning the archive', () => {
+    let state = enterRuin(talkToSettlementGuide(stabilizeBeacon(collectFiber(collectSample(createInitialState())))));
+    state = attackTurn(attackTurn(attackTurn(attackTurn(state))));
+    state = scanArchive(state);
+
+    const completed = returnToSettlement(state);
+
+    expect(completed.questFlags.settlementReturned).toBe(true);
+    expect(completed.objective).toBe('survive');
+    expect(completed.equipment.suit).toBe('Survey Suit Mk.II');
   });
 
   it('unsafe zones drain oxygen without dropping below zero', () => {
@@ -115,21 +162,20 @@ describe('game state progression', () => {
   });
 
   it('oxygen values survive save export and hydration', () => {
-    const progressed = talkToSettlementGuide(collectSample(createInitialState()));
+    const progressed = stabilizeBeacon(collectFiber(collectSample(createInitialState())));
     const lowOxygen = {
       ...progressed,
       oxygen: 4,
-      maxOxygen: 10,
     };
 
     const restored = hydrateState(exportSaveData(lowOxygen));
 
     expect(restored.oxygen).toBe(4);
-    expect(restored.maxOxygen).toBe(10);
+    expect(restored.maxOxygen).toBe(12);
   });
 
   it('save data can be hydrated back into state', () => {
-    const progressed = talkToSettlementGuide(collectSample(createInitialState()));
+    const progressed = talkToSettlementGuide(stabilizeBeacon(collectFiber(collectSample(createInitialState()))));
 
     const restored = hydrateState(exportSaveData(progressed));
 

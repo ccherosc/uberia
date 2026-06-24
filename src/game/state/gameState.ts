@@ -275,6 +275,47 @@ export function attackTurn(state: GameState): GameState {
   };
 }
 
+export function useMedgel(state: GameState): GameState {
+  const medgelCount = state.inventory.medgel ?? 0;
+  if (medgelCount <= 0) {
+    return {
+      ...state,
+      currentDialogue: 'No medgel packs remain in the field kit.',
+    };
+  }
+
+  if (state.health >= state.maxHealth) {
+    return {
+      ...state,
+      currentDialogue: 'You are not injured enough to justify burning a medgel pack right now.',
+    };
+  }
+
+  const healedHealth = Math.min(state.maxHealth, state.health + 4);
+  const inventory = {
+    ...state.inventory,
+    medgel: medgelCount - 1,
+  };
+
+  if (!state.inCombat || !state.combat) {
+    return {
+      ...state,
+      health: healedHealth,
+      inventory,
+      currentDialogue: 'You inject a medgel dose and your suit reports a quick surge of tissue repair.',
+    };
+  }
+
+  const counteredHealth = Math.max(1, healedHealth - state.combat.enemyAttack);
+
+  return {
+    ...state,
+    health: counteredHealth,
+    inventory,
+    currentDialogue: 'You trigger a medgel burst, but the sentinel lashes back before the sealant can fully set.',
+  };
+}
+
 export function scanArchive(state: GameState): GameState {
   if (!state.questFlags.sentinelDefeated) {
     return {

@@ -14,6 +14,7 @@ import {
   stabilizeBeacon,
   type GameState,
   talkToSettlementGuide,
+  useMedgel,
 } from '../state/gameState';
 import { GAME_HEIGHT, GAME_WIDTH } from '../dimensions';
 
@@ -147,7 +148,7 @@ const BLOCKED_TILES = new Set<string>([
 
 export class PrototypeScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: Record<'W' | 'A' | 'S' | 'D' | 'E' | 'SPACE' | 'K' | 'L', Phaser.Input.Keyboard.Key>;
+  private wasd!: Record<'W' | 'A' | 'S' | 'D' | 'E' | 'SPACE' | 'H' | 'K' | 'L', Phaser.Input.Keyboard.Key>;
   private player!: Phaser.GameObjects.Image;
   private state: GameState = createInitialState();
   private hudText!: Phaser.GameObjects.Text;
@@ -173,7 +174,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.drawWorld();
     this.player = this.add.image(this.tileCenterX(START_TILE.x), this.tileCenterY(START_TILE.y), 'player-party').setScale(1.5).setDepth(5);
     this.cursors = this.input.keyboard!.createCursorKeys();
-    this.wasd = this.input.keyboard!.addKeys('W,A,S,D,E,SPACE,K,L') as typeof this.wasd;
+    this.wasd = this.input.keyboard!.addKeys('W,A,S,D,E,SPACE,H,K,L') as typeof this.wasd;
 
     this.hudText = this.add.text(16, 16, '', {
       fontFamily: 'monospace',
@@ -618,6 +619,10 @@ export class PrototypeScene extends Phaser.Scene {
       }
     }
 
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.H)) {
+      this.state = useMedgel(this.state);
+    }
+
     const interactPressed = Phaser.Input.Keyboard.JustDown(this.wasd.E) || Phaser.Input.Keyboard.JustDown(this.wasd.SPACE);
 
     if (!interactPressed) {
@@ -696,7 +701,7 @@ export class PrototypeScene extends Phaser.Scene {
       nearby ? `Nearby: ${nearby.label}` : 'Nearby: nothing interactable',
       nearby ? 'E / SPACE = interact' : 'Click a tile or tap a key to move one grid step',
       this.isSafeOxygenZone() ? 'Air pocket: oxygen refills here' : 'Hostile air: oxygen drains here',
-      'K = save, L = load',
+      'H = use medgel, K = save, L = load',
     ]);
 
     this.combatText.setText(
@@ -727,6 +732,7 @@ export class PrototypeScene extends Phaser.Scene {
       '- gather sample + fiber',
       '- repair the beacon for safe air',
       '- talk to the settlement guide',
+      '- use H to spend medgel when hurt',
       '- fight the ruin sentinel',
       '- save/load your run',
     ].join('\n'));

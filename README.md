@@ -12,6 +12,7 @@ A browser-playable survival RPG prototype for Windows-first testing. It aims for
 - NPC interaction with the settlement guide
 - inventory/equipment counters
 - turn-based combat prototype
+- field medgel healing with turn-cost pressure during combat
 - exploration + survival progression counters
 - save/load using browser localStorage
 - eerie placeholder retro presentation using Phaser shapes
@@ -45,6 +46,7 @@ Pushes to `main` automatically deploy to:
 - Move: click a tile to route there one square at a time
 - Keyboard movement: `WASD` or arrow keys for one-tile nudges
 - Interact / attack: `E` or `Space`
+- Use medgel: `H`
 - Save: `K`
 - Load: `L`
 
@@ -56,9 +58,10 @@ Pushes to `main` automatically deploy to:
 5. Reach the **mixed settlement** and speak to the guide.
 6. Carry the **pulse-glyph** to the **resin ruin gate**.
 7. Fight the **resin sentinel** in a simple turn-based battle.
-8. Scan the **archive heart**.
-9. Return to the settlement guide for a suit upgrade.
-10. Save and reload your run whenever you want.
+8. Spend a **medgel** with `H` when oxygen attrition or combat wears the party down.
+9. Scan the **archive heart**.
+10. Return to the settlement guide for a suit upgrade.
+11. Save and reload your run whenever you want.
 
 ## Prototype loop
 1. Resource the expedition by collecting both the sample and the fiber.

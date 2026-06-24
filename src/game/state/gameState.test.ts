@@ -12,6 +12,7 @@ import {
   scanArchive,
   stabilizeBeacon,
   talkToSettlementGuide,
+  useMedgel,
 } from './gameState';
 
 describe('game state progression', () => {
@@ -161,17 +162,59 @@ describe('game state progression', () => {
     expect(exhausted.currentDialogue).toMatch(/Oxygen reserves are empty/i);
   });
 
+  it('using a medgel heals and consumes one charge outside combat', () => {
+    const healed = useMedgel({
+      ...createInitialState(),
+      health: 7,
+    });
+
+    expect(healed.health).toBe(11);
+    expect(healed.inventory.medgel).toBe(0);
+    expect(healed.currentDialogue).toMatch(/medgel/i);
+  });
+
+  it('using a medgel in combat heals but still triggers an enemy counterattack', () => {
+    const battling = enterRuin(talkToSettlementGuide(stabilizeBeacon(collectFiber(collectSample(createInitialState())))));
+    const damaged = {
+      ...battling,
+      health: 7,
+    };
+
+    const healed = useMedgel(damaged);
+
+    expect(healed.inCombat).toBe(true);
+    expect(healed.health).toBe(9);
+    expect(healed.inventory.medgel).toBe(0);
+    expect(healed.currentDialogue).toMatch(/lashes back/i);
+  });
+
+  it('medgels do not fire when health is already full', () => {
+    const state = createInitialState();
+    const unchanged = useMedgel(state);
+
+    expect(unchanged.health).toBe(state.health);
+    expect(unchanged.inventory.medgel).toBe(1);
+    expect(unchanged.currentDialogue).toMatch(/not injured/i);
+  });
+
   it('oxygen values survive save export and hydration', () => {
     const progressed = stabilizeBeacon(collectFiber(collectSample(createInitialState())));
     const lowOxygen = {
       ...progressed,
       oxygen: 4,
+      health: 8,
+      inventory: {
+        ...progressed.inventory,
+        medgel: 2,
+      },
     };
 
     const restored = hydrateState(exportSaveData(lowOxygen));
 
     expect(restored.oxygen).toBe(4);
     expect(restored.maxOxygen).toBe(12);
+    expect(restored.health).toBe(8);
+    expect(restored.inventory.medgel).toBe(2);
   });
 
   it('save data can be hydrated back into state', () => {

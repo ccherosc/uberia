@@ -15,6 +15,7 @@ A browser-playable survival RPG prototype for Windows-first testing. It aims for
 - field medgel healing with turn-cost pressure during combat
 - exploration + survival progression counters
 - save/load using browser localStorage
+- toggleable field journal that tracks the current objective, quest milestones, decoded signals, and party roles
 - eerie placeholder retro presentation using Phaser shapes
 
 ## Run it
@@ -47,6 +48,7 @@ Pushes to `main` automatically deploy to:
 - Keyboard movement: `WASD` or arrow keys for one-tile nudges
 - Interact / attack: `E` or `Space`
 - Use medgel: `H`
+- Field journal: `J`
 - Save: `K`
 - Load: `L`
 

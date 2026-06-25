@@ -17,6 +17,7 @@ import {
   useMedgel,
 } from '../state/gameState';
 import { GAME_HEIGHT, GAME_WIDTH } from '../dimensions';
+import { buildJournalSections } from '../ui/journal';
 
 type PointOfInterestId = 'sample' | 'fiber' | 'beacon' | 'guide' | 'ruin' | 'archive';
 
@@ -148,7 +149,7 @@ const BLOCKED_TILES = new Set<string>([
 
 export class PrototypeScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: Record<'W' | 'A' | 'S' | 'D' | 'E' | 'SPACE' | 'H' | 'K' | 'L', Phaser.Input.Keyboard.Key>;
+  private wasd!: Record<'W' | 'A' | 'S' | 'D' | 'E' | 'SPACE' | 'H' | 'J' | 'K' | 'L', Phaser.Input.Keyboard.Key>;
   private player!: Phaser.GameObjects.Image;
   private state: GameState = createInitialState();
   private hudText!: Phaser.GameObjects.Text;
@@ -156,6 +157,9 @@ export class PrototypeScene extends Phaser.Scene {
   private promptText!: Phaser.GameObjects.Text;
   private combatText!: Phaser.GameObjects.Text;
   private moveText!: Phaser.GameObjects.Text;
+  private journalBackdrop!: Phaser.GameObjects.Rectangle;
+  private journalText!: Phaser.GameObjects.Text;
+  private journalOpen = false;
   private oxygenTickElapsed = 0;
   private moveQueue: TileCoord[] = [];
   private activeTarget: TileCoord | null = null;
@@ -174,7 +178,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.drawWorld();
     this.player = this.add.image(this.tileCenterX(START_TILE.x), this.tileCenterY(START_TILE.y), 'player-party').setScale(1.5).setDepth(5);
     this.cursors = this.input.keyboard!.createCursorKeys();
-    this.wasd = this.input.keyboard!.addKeys('W,A,S,D,E,SPACE,H,K,L') as typeof this.wasd;
+    this.wasd = this.input.keyboard!.addKeys('W,A,S,D,E,SPACE,H,J,K,L') as typeof this.wasd;
 
     this.hudText = this.add.text(16, 16, '', {
       fontFamily: 'monospace',
@@ -211,7 +215,24 @@ export class PrototypeScene extends Phaser.Scene {
       wordWrap: { width: 580 },
     }).setDepth(10);
 
+    this.journalBackdrop = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH - 80, GAME_HEIGHT - 80, 0x041018, 0.94)
+      .setStrokeStyle(3, 0x68dbe7, 0.9)
+      .setDepth(20)
+      .setVisible(false);
+
+    this.journalText = this.add.text(64, 56, '', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      color: '#d6f7ff',
+      wordWrap: { width: GAME_WIDTH - 128 },
+      lineSpacing: 4,
+    }).setDepth(21).setVisible(false);
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.journalOpen) {
+        return;
+      }
+
       if (pointer.worldX < 0 || pointer.worldY < 0 || pointer.worldX >= MAP_WIDTH || pointer.worldY >= MAP_HEIGHT) {
         return;
       }
@@ -481,6 +502,10 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private handleKeyboardStepInput(): void {
+    if (this.journalOpen) {
+      return;
+    }
+
     if (this.activeTarget || this.moveQueue.length > 0) {
       return;
     }
@@ -595,6 +620,12 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private handleActions(): void {
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.J)) {
+      this.journalOpen = !this.journalOpen;
+      this.moveQueue = [];
+      this.activeTarget = null;
+    }
+
     if (Phaser.Input.Keyboard.JustDown(this.wasd.K)) {
       saveState(this.state);
       this.state = {
@@ -678,6 +709,7 @@ export class PrototypeScene extends Phaser.Scene {
     const sampleCount = this.state.inventory.sample ?? 0;
     const fiberCount = this.state.inventory.fiber ?? 0;
     const archiveShardCount = this.state.inventory.archiveShard ?? 0;
+    const journal = buildJournalSections(this.state);
 
     this.hudText.setText([
       'UBERIA // survival prototype',
@@ -701,7 +733,7 @@ export class PrototypeScene extends Phaser.Scene {
       nearby ? `Nearby: ${nearby.label}` : 'Nearby: nothing interactable',
       nearby ? 'E / SPACE = interact' : 'Click a tile or tap a key to move one grid step',
       this.isSafeOxygenZone() ? 'Air pocket: oxygen refills here' : 'Hostile air: oxygen drains here',
-      'H = use medgel, K = save, L = load',
+      'H = use medgel, J = journal, K = save, L = load',
     ]);
 
     this.combatText.setText(
@@ -732,12 +764,30 @@ export class PrototypeScene extends Phaser.Scene {
       '- gather sample + fiber',
       '- repair the beacon for safe air',
       '- talk to the settlement guide',
+      '- press J to review your field journal',
       '- use H to spend medgel when hurt',
       '- fight the ruin sentinel',
       '- save/load your run',
     ].join('\n'));
 
     this.dialogueText.setText(`Log: ${this.state.currentDialogue}`);
+
+    this.journalBackdrop.setVisible(this.journalOpen);
+    this.journalText.setVisible(this.journalOpen);
+    this.journalText.setText([
+      'FIELD JOURNAL // J to close',
+      '',
+      `Current objective: ${journal.objective}`,
+      '',
+      'Milestones',
+      ...journal.milestones,
+      '',
+      'Decoded signals',
+      ...journal.signals,
+      '',
+      'Party notes',
+      ...journal.party,
+    ].join('\n'));
   }
 
   private getCurrentTile(): TileCoord {
